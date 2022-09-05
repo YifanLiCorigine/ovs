@@ -81,6 +81,12 @@ EXTRA_DIST = \
 	.ci/osx-prepare.sh \
 	.cirrus.yml \
 	.github/workflows/build-and-test.yml \
+	.github/actions/download/action.yml \
+	.github/actions/unpack-deb/action.yml \
+	.github/deps/commits_check.sh \
+	.github/deps/kernel-doc \
+	.github/deps/xmastree.py \
+	.github/workflows/patch_chk.yaml \
 	.travis.yml \
 	appveyor.yml \
 	boot.sh \
