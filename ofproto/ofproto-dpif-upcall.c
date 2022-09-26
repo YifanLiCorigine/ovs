@@ -2806,7 +2806,7 @@ revalidate(struct revalidator *revalidator)
     }
     dpif_flow_dump_thread_destroy(dump_thread);
     if (flow_delete_exist) {
-        dpif_meter_revalidate(udpif->dpif, udpif->backer);
+        dpif_meter_revalidate(udpif->dpif, udpif->backer->meter_ids);
     }
     ofpbuf_uninit(&odp_actions);
 }

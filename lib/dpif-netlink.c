@@ -49,7 +49,7 @@
 #include "netlink.h"
 #include "netnsid.h"
 #include "odp-util.h"
-#include "ofproto/ofproto-dpif.h"
+//#include "ofproto/ofproto-dpif.h"
 #include "openvswitch/dynamic-string.h"
 #include "openvswitch/flow.h"
 #include "openvswitch/hmap.h"
@@ -2574,18 +2574,18 @@ static uint32_t
 dpif_netlink_calculate_n_handlers(void)
 {
     uint32_t total_cores = count_total_cores();
-    uint32_t _n_handlers = count_cpu_cores();
+    uint32_t n_handlers = count_cpu_cores();
     uint32_t next_prime_num;
 
     /* If not all cores are available to OVS, create additional handler
      * threads to ensure more fair distribution of load between them.
      */
-    if (_n_handlers < total_cores && total_cores > 2) {
-        next_prime_num = next_prime(_n_handlers + 1);
-        _n_handlers = MIN(next_prime_num, total_cores);
+    if (n_handlers < total_cores && total_cores > 2) {
+        next_prime_num = next_prime(n_handlers + 1);
+        n_handlers = MIN(next_prime_num, total_cores);
     }
 
-    return _n_handlers;
+    return n_handlers;
 }
 
 static int
@@ -2595,16 +2595,16 @@ dpif_netlink_refresh_handlers_cpu_dispatch(struct dpif_netlink *dpif)
     int handler_id;
     int error = 0;
     uint32_t *upcall_pids;
-    uint32_t _n_handlers;
+    uint32_t n_handlers;
 
-    _n_handlers = dpif_netlink_calculate_n_handlers();
-    if (dpif->n_handlers != _n_handlers) {
+    n_handlers = dpif_netlink_calculate_n_handlers();
+    if (dpif->n_handlers != n_handlers) {
         VLOG_DBG("Dispatch mode(per-cpu): initializing %d handlers",
-                   _n_handlers);
+                   n_handlers);
         destroy_all_handlers(dpif);
-        upcall_pids = xzalloc(_n_handlers * sizeof *upcall_pids);
-        dpif->handlers = xzalloc(_n_handlers * sizeof *dpif->handlers);
-        for (handler_id = 0; handler_id < _n_handlers; handler_id++) {
+        upcall_pids = xzalloc(n_handlers * sizeof *upcall_pids);
+        dpif->handlers = xzalloc(n_handlers * sizeof *dpif->handlers);
+        for (handler_id = 0; handler_id < n_handlers; handler_id++) {
             struct dpif_handler *handler = &dpif->handlers[handler_id];
             error = create_nl_sock(dpif, &handler->sock);
             if (error) {
@@ -2618,9 +2618,9 @@ dpif_netlink_refresh_handlers_cpu_dispatch(struct dpif_netlink *dpif)
                       handler_id, upcall_pids[handler_id]);
         }
 
-        dpif->n_handlers = _n_handlers;
+        dpif->n_handlers = n_handlers;
         error = dpif_netlink_set_handler_pids(&dpif->dpif, upcall_pids,
-                                              _n_handlers);
+                                              n_handlers);
         free(upcall_pids);
     }
     return error;
@@ -2632,7 +2632,7 @@ dpif_netlink_refresh_handlers_cpu_dispatch(struct dpif_netlink *dpif)
  * backing kernel vports. */
 static int
 dpif_netlink_refresh_handlers_vport_dispatch(struct dpif_netlink *dpif,
-                                             uint32_t _n_handlers)
+                                             uint32_t n_handlers)
     OVS_REQ_WRLOCK(dpif->upcall_lock)
 {
     unsigned long int *keep_channels;
@@ -2644,13 +2644,13 @@ dpif_netlink_refresh_handlers_vport_dispatch(struct dpif_netlink *dpif,
     int retval = 0;
     size_t i;
 
-    ovs_assert(!WINDOWS || _n_handlers <= 1);
+    ovs_assert(!WINDOWS || n_handlers <= 1);
     ovs_assert(!WINDOWS || dpif->n_handlers <= 1);
 
-    if (dpif->n_handlers != _n_handlers) {
+    if (dpif->n_handlers != n_handlers) {
         destroy_all_channels(dpif);
-        dpif->handlers = xzalloc(_n_handlers * sizeof *dpif->handlers);
-        for (i = 0; i < _n_handlers; i++) {
+        dpif->handlers = xzalloc(n_handlers * sizeof *dpif->handlers);
+        for (i = 0; i < n_handlers; i++) {
             int error;
             struct dpif_handler *handler = &dpif->handlers[i];
 
@@ -2668,10 +2668,10 @@ dpif_netlink_refresh_handlers_vport_dispatch(struct dpif_netlink *dpif,
                 return error;
             }
         }
-        dpif->n_handlers = _n_handlers;
+        dpif->n_handlers = n_handlers;
     }
 
-    for (i = 0; i < _n_handlers; i++) {
+    for (i = 0; i < n_handlers; i++) {
         struct dpif_handler *handler = &dpif->handlers[i];
 
         handler->event_offset = handler->n_events = 0;
@@ -2804,7 +2804,7 @@ dpif_netlink_recv_set(struct dpif *dpif_, bool enable)
 }
 
 static int
-dpif_netlink_handlers_set(struct dpif *dpif_, uint32_t _n_handlers)
+dpif_netlink_handlers_set(struct dpif *dpif_, uint32_t n_handlers)
 {
     struct dpif_netlink *dpif = dpif_netlink_cast(dpif_);
     int error = 0;
@@ -2812,7 +2812,7 @@ dpif_netlink_handlers_set(struct dpif *dpif_, uint32_t _n_handlers)
 #ifdef _WIN32
     /* Multiple upcall handlers will be supported once kernel datapath supports
      * it. */
-    if (_n_handlers > 1) {
+    if (n_handlers > 1) {
         return error;
     }
 #endif
@@ -2823,7 +2823,7 @@ dpif_netlink_handlers_set(struct dpif *dpif_, uint32_t _n_handlers)
             error = dpif_netlink_refresh_handlers_cpu_dispatch(dpif);
         } else {
             error = dpif_netlink_refresh_handlers_vport_dispatch(dpif,
-                                                                 _n_handlers);
+                                                                 n_handlers);
         }
     }
     fat_rwlock_unlock(&dpif->upcall_lock);
@@ -2833,12 +2833,12 @@ dpif_netlink_handlers_set(struct dpif *dpif_, uint32_t _n_handlers)
 
 static bool
 dpif_netlink_number_handlers_required(struct dpif *dpif_,
-                                      uint32_t *_n_handlers)
+                                      uint32_t *n_handlers)
 {
     struct dpif_netlink *dpif = dpif_netlink_cast(dpif_);
 
     if (dpif_netlink_upcall_per_cpu(dpif)) {
-        *_n_handlers = dpif_netlink_calculate_n_handlers();
+        *n_handlers = dpif_netlink_calculate_n_handlers();
         return true;
     }
 
@@ -4165,15 +4165,15 @@ dpif_netlink_meter_get_features(const struct dpif *dpif_,
     ofpbuf_delete(msg);
 }
 
-static bool dpif_netlink_meter_should_revalidate(struct dpif_backer *backer,
+static bool dpif_netlink_meter_should_revalidate(struct id_pool *meter_ids,
                                                  uint32_t meter_id)
 {
-    return !id_pool_id_exist(backer->meter_ids, meter_id);
+    return !id_pool_id_exist(meter_ids, meter_id);
 }
 
 static void
 dpif_tc_meter_revalidate(struct dpif *dpif_ OVS_UNUSED,
-                         struct dpif_backer *backer, struct ofpbuf *reply)
+                         struct id_pool *meter_ids, struct ofpbuf *reply)
 {
     static struct nl_policy actions_orders_policy[ACT_MAX_NUM + 1] = {};
     struct nlattr *actions_orders[ARRAY_SIZE(actions_orders_policy)];
@@ -4205,28 +4205,28 @@ dpif_tc_meter_revalidate(struct dpif *dpif_ OVS_UNUSED,
     int i;
 
     if (!reply) {
-        VLOG_ERR_RL(&rl, "null reply message during meter revalidation\n");
+        VLOG_ERR_RL(&rl, "Null reply message during meter revalidation");
         return;
     }
 
     if (reply->size <= NLMSG_ALIGNTO + NLMSG_HDRLEN) {
-        VLOG_DBG_RL(&rl, "no meters present in tc during meter "
-                    "revalidation\n");
+        VLOG_DBG_RL(&rl, "No meters present in tc during meter "
+                    "revalidation");
         return;
     }
 
     if (!nl_policy_parse(reply, NLMSG_HDRLEN + sizeof(struct tcamsg),
                         tca_root_policy, action_root_attrs,
                         ARRAY_SIZE(action_root_attrs))) {
-        VLOG_ERR_RL(&rl, "failed to parse reply message during meter "
-                    "revalidation\n");
+        VLOG_ERR_RL(&rl, "Failed to parse reply message during meter "
+                    "revalidation");
         return;
     }
 
     act_count = nl_attr_get_u32(action_root_attrs[TCA_ROOT_COUNT]);
     if (!act_count) {
-        VLOG_ERR_RL(&rl, "no police action returned in message during "
-                    "meter revalidation\n");
+        VLOG_ERR_RL(&rl, "No police action returned in message during "
+                    "meter revalidation");
         return;
     }
 
@@ -4239,8 +4239,8 @@ dpif_tc_meter_revalidate(struct dpif *dpif_ OVS_UNUSED,
                                 (ACT_MAX_NUM + 1) : (act_count + 1);
     if (!nl_parse_nested(action_root_attrs[TCA_ACT_TAB], actions_orders_policy,
                         actions_orders, revalidate_num)) {
-        VLOG_ERR_RL(&rl, "failed to parse TCA_ACT_TAB during meter "
-                    "revalidation of act_count\n");
+        VLOG_ERR_RL(&rl, "Failed to parse TCA_ACT_TAB during meter "
+                    "revalidation of act_count");
         return;
     }
 
@@ -4251,30 +4251,30 @@ dpif_tc_meter_revalidate(struct dpif *dpif_ OVS_UNUSED,
 
         if (!nl_parse_nested(actions_orders[i], act_policy,
                             action_police_attrs, ARRAY_SIZE(act_policy))) {
-            VLOG_ERR_RL(&rl, "failed to parse police action during meter "
-                      "revalidation\n");
+            VLOG_ERR_RL(&rl, "Failed to parse police action during meter "
+                      "revalidation");
             return;
         }
 
         if (strcmp(nl_attr_get_string(action_police_attrs[TCA_KIND]),
                                     "police")) {
-            VLOG_EMER("non-police action found during meter revalidation\n");
+            VLOG_EMER("Non-police action found during meter revalidation");
             continue;
         }
 
         if (!nl_parse_nested(action_police_attrs[TCA_ACT_OPTIONS],
                              police_policy, action_police_tab,
                              ARRAY_SIZE(action_police_tab))) {
-            VLOG_ERR_RL(&rl, "failed to parse the single police action "
-                        "during meter revalidation\n");
+            VLOG_ERR_RL(&rl, "Failed to parse the single police action "
+                        "during meter revalidation");
             return;
         }
 
         tc_police = nl_attr_get_unspec(action_police_tab[TCA_POLICE_TBF],
                                        sizeof *tc_police);
         if (!tc_police) {
-            VLOG_ERR_RL(&rl, "can not get police struct during meter "
-                        "revalidation\n");
+            VLOG_ERR_RL(&rl, "Can not get police struct during meter "
+                        "revalidation");
             continue;
         }
         index = tc_police->index;
@@ -4290,10 +4290,10 @@ dpif_tc_meter_revalidate(struct dpif *dpif_ OVS_UNUSED,
 
         /* transform police index to meter id */
         index = POLICY_INDEX_TO_METER_ID(index);
-        if (dpif_netlink_meter_should_revalidate(backer, index)) {
+        if (dpif_netlink_meter_should_revalidate(meter_ids, index)) {
             meter_id.uint32 = index;
-            VLOG_DBG_RL(&rl, "revalidate meter id %u for police index "
-                        "%08x\n", index, tc_police->index);
+            VLOG_DBG_RL(&rl, "Revalidate meter id %u for police index "
+                        "%08x", index, tc_police->index);
             meter_offload_del(meter_id, NULL);
         }
     }
@@ -4301,7 +4301,7 @@ dpif_tc_meter_revalidate(struct dpif *dpif_ OVS_UNUSED,
 
 static int
 dpif_netlink_meter_revalidate__(struct dpif *dpif_ OVS_UNUSED,
-                                struct dpif_backer *backer)
+                                struct id_pool *meter_ids)
 {
     static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(5,20);
     struct nla_bitfield32 dump_flags = { TCA_DUMP_FLAGS_TERSE,
@@ -4341,11 +4341,11 @@ dpif_netlink_meter_revalidate__(struct dpif *dpif_ OVS_UNUSED,
                       sizeof dump_flags);
     error = tc_transact(&request, &reply);
     if (error) {
-        VLOG_ERR_RL(&rl, "failed to send dump netlink msg for revalidate "
-                    "error %d\n", error);
+        VLOG_ERR_RL(&rl, "Failed to send dump netlink msg for revalidate "
+                    "error %d", error);
         return error;
     }
-    dpif_tc_meter_revalidate(dpif_, backer, reply);
+    dpif_tc_meter_revalidate(dpif_, meter_ids, reply);
     ofpbuf_delete(reply);
     return 0;
 }
@@ -4560,14 +4560,14 @@ dpif_netlink_meter_del(struct dpif *dpif, ofproto_meter_id meter_id,
 }
 
 static int
-dpif_netlink_meter_revalidate(struct dpif *dpif_, struct dpif_backer *backer)
+dpif_netlink_meter_revalidate(struct dpif *dpif_, struct id_pool *meter_ids)
 {
     int err;
 
     if (probe_broken_meters(dpif_)) {
         return ENOMEM;
     }
-    err = dpif_netlink_meter_revalidate__(dpif_, backer);
+    err = dpif_netlink_meter_revalidate__(dpif_, meter_ids);
 
     return err;
 }
